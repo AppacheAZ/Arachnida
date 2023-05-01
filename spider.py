@@ -3,8 +3,9 @@ import requests
 from urllib.parse import urlparse, urljoin
 import argparse
 import os
+import time
 
-def get_images(url):
+def get_images(url, path):
     url_components = urlparse(url) # Parse the url (analyze and split it)
     url = url if url_components.scheme else url_components._replace(scheme='http').geturl() # If the url doesn't have a scheme, add http
 
@@ -14,7 +15,7 @@ def get_images(url):
     soup = BeautifulSoup(html, 'html.parser') # Parse the html
 
     # Create a directory to save the images if it doesn't exist
-    os.makedirs('img_downloads', exist_ok=True)
+    os.makedirs(path, exist_ok=True)
 
     print(f"\n \n Downloading images from {url} \n \n")
     for image in soup.find_all('img'):
@@ -22,7 +23,7 @@ def get_images(url):
         if image_url and (image_url.startswith('http') or image_url.startswith('https')): #if the image has a src attribute, complete the url
             full_image_url = urljoin(url, image_url)
             image_content = requests.get(full_image_url) # Get the content of the image
-            image_filename = os.path.join('img_downloads', image_url.split('/')[-1]) # Get the filename of the image
+            image_filename = os.path.join(path, image_url.split('/')[-1]) # Get the filename of the image
             with open(image_filename, 'wb') as f: # Write the image in the directory
                 f.write(image_content.content)
             print(f'Image {image_filename} downloaded')
@@ -38,7 +39,9 @@ def get_title(url):
     title = soup.find('title').text
     return(title)
 
-def get_links(url):
+visited_links = set()
+
+def get_links(url, visited_links=set()):
     url_components = urlparse(url) # Parse the url (analyze and split it)
     url = url if url_components.scheme else url_components._replace(scheme='http').geturl() # If the url doesn't have a scheme, add http
 
@@ -51,47 +54,46 @@ def get_links(url):
     for link in soup.find_all('a', href=True):
         if link['href'].startswith('http') or link['href'].startswith('https'): #if the image has a src attribute, complete the url
             full_link_url = urljoin(url, link['href'])
+            if full_link_url not in visited_links: # If the link hasn't been visited, add it to the list
+                visited_links.add(full_link_url)
             links.append(full_link_url)
     return links
 
-def recursive_links(url, level):
+def recursive_links(url, level, visited_links=set()):
     links = []
-
     while level > 0:
-        links = get_links(url)
+        links = get_links(url, visited_links)
         level -= 1
-        for link in links:
-            print(link)
-            recursive_links(link, level)
+        for current_link in links:
+            print(current_link)
+            visited_links.add(current_link)
+            recursive_links(current_link, level, visited_links)
     return links
 
 def main():
-    parser = argparse.ArgumentParser(description='Process HTML pages')
+    parser = argparse.ArgumentParser(prog ='Spider', description='Process HTML pages', epilog='Enjoy the program! :D')
     parser.add_argument('-d', '--description', action='store_true', help='description of the program')
     parser.add_argument('-t', '--title', action='store_true', help='title of the page')
-    parser.add_argument('-r', '--recursive', action='store_true', help='images in the page')
-    parser.add_argument('url', help='URL of the page to process')
-    parser.add_argument('-l', '--links', action='store_true', help='links in the page')
-    parser.add_argument('-k', '--recursive_links', action='store_true', help='links in the page')
 
+    parser.add_argument('-r', '--recursive_links', action='store_true', help='links in the page')
+    parser.add_argument('-l', '--level', type=int, default = 1, help='level of recursion')
+    parser.add_argument('-p', '--path', default = "./data", help='PATH to save the images')
+    
+    parser.add_argument('url', help='URL of the page to process')
 
     args = parser.parse_args()
+    
 
     if args.description:
         print('This program will print the title and links of a given URL')
     if args.title:
         print(get_title(args.url))
-    if args.recursive:
-        print(f'This program will download all images in a given URL in the PATH: {os.getcwd()}')
-        get_images(args.url)
-    if args.links:
-        print(f'This program will print all links in a given URL')
-        get_links(args.url)
     if args.recursive_links:
         print(f'This program will print all links in a given URL')
-        for i in recursive_links(args.url, 2):
-            get_images(i)
-
+        start_time = time.time()
+        for i in recursive_links(args.url, args.level,):
+            get_images(i, args.path)
+        print("--- %s seconds ---" % (time.time() - start_time))
 
 if __name__ == '__main__':
     main()
